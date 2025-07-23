@@ -19,7 +19,6 @@ def init_db():
                 inadimplencia REAL
             )
         ''')
-
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS selic (
                 mes TEXT PRIMARY KEY,
@@ -35,11 +34,11 @@ def index():
     return render_template_string('''
         <h1>Upload de dados Economicos</h1>
         <form action='/upload' method='POST' enctype='multipart/form-data'>    
-            <label for = 'campo_inadimplencia'>Arquivo de Inadimplencia:</label>
+            <label for = 'campo_inadimplencia'>Arquivo de Inadimplencia</label>
             <input name = 'campo_inadimplencia' type = 'file' required><br><br>
 
         
-            <label for = 'campo_selic'>Arquivo da Selic:</label>
+            <label for = 'campo_selic'>Arquivo da Selic</label>
             <input name = 'campo_selic' type = 'file' required><br><br>
             <input type = 'submit' value = 'Fazer Upload'>
                                                                     
@@ -54,36 +53,43 @@ def index():
     ''')
 @app.route('/upload', methods=['POST', 'GET'])
 def upload():
-    inad_file = request.files.get['campo_inadimplencia']
-    selic_file = request.files.get['campo_selic']
+    inad_file = request.files.get('campo_inadimplencia')
+    selic_file = request.files.get('campo_selic')
 
     #Verificar se os arquivos de fato foram enviados
     if not inad_file or not selic_file:
         return jsonify({'Erro': 'Ambos os arquivos devem ser enviados'})
-    inad_df = pd.read_csv(inad_file, sep=';', header=0, names=['data', 'inadimplencia'])
-    selic_df = pd.read_csv(selic_file, sep=';', header=0, names=['data', 'selic_diaria'])
+    
+    inad_df = pd.read_csv(
+        inad_file, 
+        sep=';', 
+        names=['data', 'inadimplencia'], 
+        header = 0
+    )
+    selic_df = pd.read_csv(
+        selic_file, 
+        sep=';', 
+        names=['data', 'selic_diaria'], 
+        header = 0
+    )
 
-    #Formata o campo data como data hora padrão.
-    inad_df['data'] = pd.to_datetime(inad_df['data']),
-    format = "%d/%m/%Y"
-    selic_df['data'] = pd.to_datetime(selic_df['data']),
-    format = "%d/%m/%Y"
+    # formata o campo de data como datahora padrão
+    inad_df['data'] = pd.to_datetime(inad_df['data'], format="%d/%m/%Y")
+    selic_df['data'] = pd.to_datetime(selic_df['data'], format="%d/%m/%Y")
 
-    #Gera uma coluna nova mes e preenche de acordo com a data
+    # gera uma coluna nova mes e preenche de acordo com a data
     inad_df['mes'] = inad_df['data'].dt.to_period('M').astype(str)
     selic_df['mes'] = selic_df['data'].dt.to_period('M').astype(str)
-
-    #Limpa as dubplicatas e agrupa conjuntos
-    inad_mensal = inad_df[['mes', 'inadimplencia']].drop_duplicates()
+    #limpa as duplicatas e agrupa conjuntos
+    inad_mensal = inad_df[['mes','inadimplencia']].drop_duplicates()
     selic_mensal = selic_df.groupby('mes')['selic_diaria'].mean().reset_index()
 
-    #Salva os dados no banco de dados
+    # agora com tudo limpo e ordenado vamos armazenar no banco de dados
     with sqlite3.connect(DB_PATH) as conn:
         inad_mensal.to_sql('inadimplencia', conn, if_exists='replace', index=False)
         selic_mensal.to_sql('selic', conn, if_exists='replace', index=False)
-       
+    return jsonify({'Mensagem':'Dados inseridos com sucesso!'})
 
-    return jsonify({'Sucesso': 'Arquivos enviados e processados com sucesso!'})
 
 @app.route('/consultar', methods=['POST', 'GET'])
 def consultar():
@@ -94,12 +100,12 @@ def consultar():
             return jsonify({'Erro' : 'Tabela inválida'})
         with sqlite3.connect(DB_PATH) as conn:
             df = pd.read_sql_query(f'SELECT * FROM {tabela}', conn)
-        return jsonify(df.to_html(index=False))
+        return df.to_html(index=False)
 
     #Resultado sem receber um POST, ou seja, a primeira vez que a pagina for carregada
     return render_template_string('''
         <h1>Consultar Tabelas</h1>
-        <form action='consultar' method='POST'>
+        <form action='/consultar' method='POST'>
             action='consultar' method='POST'>
             <label for='campo_tabela'> Escolha a Tabela:</label>
             <select name = 'campo_tabela'>
@@ -109,7 +115,7 @@ def consultar():
             <input type = 'submit' value = 'Consultar'>
         </form>
         <br>
-        <a href='/'> Voltar  </a>
+        <a href='/'> Voltar </a>
     ''')
         
 
